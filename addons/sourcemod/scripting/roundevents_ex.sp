@@ -166,12 +166,12 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 	// Fuck restrictions?
 	if (GetConVar[UnlockWall][Value])
 	{
-		// Let's search for entities
-		new entity = -1;
-
 		// Loop through and accept new collision group on wall entities of this map
 		for (new i = 0; i < sizeof(wallEnts); i++)
 		{
+			// Let's search for an ents
+			new entity = -1;
+
 			while ((entity = FindEntityByClassname(entity, wallEnts[i])) != -1)
 			{
 				SetEntProp(entity, Prop_Send, "m_CollisionGroup", true);
@@ -196,7 +196,7 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 			SetMenuExitButton(SwitchVoteMenu, false);
 
 			// Show vote menu to all during bonusround time
-			VoteMenuToAll(SwitchVoteMenu, GetConVarInt(dod_bonusroundtime) - 1);
+			VoteMenuToAll(SwitchVoteMenu, GetConVarInt(dod_bonusroundtime)-1);
 		}
 
 		// Reset amount of played rounds when teams should be switched
@@ -225,10 +225,10 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 	// Make sure that previous teamwall state should be returned to an original one
 	if (GetConVar[UnlockWall][Value])
 	{
-		new entity = -1;
-
 		for (new i = 0; i < sizeof(wallEnts); i++)
 		{
+			new entity = -1;
+
 			// Since there may be more than 2 walls, lets loop again
 			while ((entity = FindEntityByClassname(entity, wallEnts[i])) != -1)
 			{
