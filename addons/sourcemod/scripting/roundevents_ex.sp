@@ -169,7 +169,6 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 		// Loop through and accept new collision group on wall entities of this map
 		for (new i = 0; i < sizeof(wallEnts); i++)
 		{
-			// Let's search for an ents
 			new entity = -1;
 
 			while ((entity = FindEntityByClassname(entity, wallEnts[i])) != -1)
@@ -196,7 +195,7 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 			SetMenuExitButton(SwitchVoteMenu, false);
 
 			// Show vote menu to all during bonusround time
-			VoteMenuToAll(SwitchVoteMenu, GetConVarInt(dod_bonusroundtime)-1);
+			VoteMenuToAll(SwitchVoteMenu, GetConVarInt(dod_bonusroundtime) - 1);
 		}
 
 		// Reset amount of played rounds when teams should be switched
@@ -227,6 +226,7 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 	{
 		for (new i = 0; i < sizeof(wallEnts); i++)
 		{
+			// Let's get it started
 			new entity = -1;
 
 			// Since there may be more than 2 walls, lets loop again
@@ -259,7 +259,7 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 				}
 				else if (GetClientTeam(client) == DODTeam_Axis) // Nope.avi
 				{
-					// Needed to spectate players to switching teams without deaths (DoDS bug: you dont die when you join spectators)
+					// Needed to spectate players to switching teams without deaths (DoDS issue: you dont die when you join spectators)
 					ChangeClientTeam(client, DODTeam_Spectator);
 					ChangeClientTeam(client, DODTeam_Allies);
 					ShowVGUIPanel(client, "class_us", INVALID_HANDLE, false);
