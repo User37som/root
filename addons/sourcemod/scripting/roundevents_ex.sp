@@ -4,7 +4,7 @@
 * Description:
 *   Provides extended functionality for round events.
 *
-* Version 1.0
+* Version 1.1
 * Changelog & more info at http://goo.gl/4nKhJ
 */
 
@@ -15,13 +15,15 @@
 
 // ====[ CONSTANTS ]====================================================================
 #define PLUGIN_NAME    "RoundEvents Extended"
-#define PLUGIN_VERSION "1.0"
+#define PLUGIN_VERSION "1.1"
+
+#define MAXTEAMS       4
+#define UNLOCKTEAMWALL 10
+#define LOCKTEAMWALL   21
+#define BONUSROUNDMAX  60.0
 
 #define VOTE_YES       "###yes###"
 #define VOTE_NO        "###no###"
-
-#define BONUSROUNDMIN  1.0
-#define BONUSROUNDMAX  60.0
 
 // ====[ VARIABLES ]====================================================================
 static const String:wallEnts[][] = { "func_team_wall", "func_teamblocker" };
@@ -40,6 +42,7 @@ enum
 	BlockSpectators,
 	ToggleAlltalk,
 	SwitchTeamsAfter,
+	SwitchAfterWins,
 	SwitchTeamsImmunity,
 	CallVoteForSwitch,
 
@@ -56,7 +59,7 @@ enum ValueType
 enum ConVar
 {
 	Handle:ConVarHandle,	// Handle of the convar
-	ValueType:Type,			// Type of value (boolean, integer, float)
+	ValueType:Type,			// Type of value (bool, integer or a float)
 	any:Value				// The value
 };
 
@@ -66,6 +69,7 @@ new	GetConVar[ConVar_Size][ConVar],
 	Handle:sv_alltalk,
 	Handle:dod_bonusroundtime,
 	RoundsPlayed,
+	RoundsWon[MAXTEAMS + 1],
 	bool:ShouldSwitch;
 
 // ====[ PLUGIN ]=======================================================================
@@ -85,35 +89,34 @@ public Plugin:myinfo =
  * ------------------------------------------------------------------------------------- */
 public OnPluginStart()
 {
-	// Create console variables
-	CreateConVar("dod_roundend_ex_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_PLUGIN|FCVAR_SPONLY);
+	// Create ConVars
+	CreateConVar("dod_roundend_ex_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
 
-	AddConVar(UnlockWall,          ValueType_Bool,  CreateConVar("dod_rex_unlockteamwall",      "1",    "Whether or not open opposite team wall after round end\nIt will be returned to the original state after round start", FCVAR_PLUGIN, true, 0.0, true, 1.0));
-	AddConVar(BlockSpectators,     ValueType_Bool,  CreateConVar("dod_rex_blockspectators",     "1",    "Whether or not disable avaliability to move to spectators after round end to prevent losers to avoid humiliation",    FCVAR_PLUGIN, true, 0.0, true, 1.0));
-	AddConVar(ToggleAlltalk,       ValueType_Bool,  CreateConVar("dod_rex_togglealltalk",       "0",    "Whether or not disable restrictions for voice chat (sv_alltalk) on round end and turn it back when new round starts", FCVAR_PLUGIN, true, 0.0, true, 1.0));
+	AddConVar(UnlockWall,          ValueType_Bool,  CreateConVar("dod_rex_unlockteamwall",      "1",    "Whether or not unlock team wall after round end\nIt will be returned to the original state when new round starts",    FCVAR_PLUGIN, true, 0.0, true, 1.0));
+	AddConVar(BlockSpectators,     ValueType_Bool,  CreateConVar("dod_rex_blockspectators",     "1",    "Whether or not disable availability to move to spectators after round end to prevent losers to avoid humiliation",    FCVAR_PLUGIN, true, 0.0, true, 1.0));
+	AddConVar(ToggleAlltalk,       ValueType_Bool,  CreateConVar("dod_rex_togglealltalk",       "0",    "Whether or not disable restrictions for voice chat (sv_alltalk) on round end and turn it off when new round starts",  FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(SwitchTeamsAfter,    ValueType_Int,   CreateConVar("dod_rex_switchafterrounds",   "4",    "Sets the amount ot rounds that required to call a vote/switch teams on next round\nSet to 0 to disable this feature", FCVAR_PLUGIN, true, 0.0));
+	AddConVar(SwitchAfterWins,     ValueType_Int,   CreateConVar("dod_rex_switchafterwins",     "0",    "Unlike dod_rex_switchafterrounds ConVar, this one deremines amount of wins needed to call a vote/switch teams",       FCVAR_PLUGIN, true, 0.0));
 	AddConVar(SwitchTeamsImmunity, ValueType_Bool,  CreateConVar("dod_rex_switchimmunity",      "0",    "Whether or not protect admins from being switched to another team on round start",                                    FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(CallVoteForSwitch,   ValueType_Float, CreateConVar("dod_rex_callvotebeforswitch", "0.60", "If value is specified (in percent), call a switch vote\nValue determines number of votes for successful voting",      FCVAR_PLUGIN, true, 0.0, true, 1.0));
 
-	// Get default convars
+	// Get default ConVars
 	mp_allowspectators = FindConVar("mp_allowspectators");
 	sv_alltalk         = FindConVar("sv_alltalk");
 	dod_bonusroundtime = FindConVar("dod_bonusroundtime");
 
-	// Hook needed events
-	HookEvent("dod_round_win",   OnRoundEnd);
+	// Hook events
+	HookEvent("dod_round_win",   OnRoundEnd,   EventHookMode_Post);
 	HookEvent("dod_round_start", OnRoundStart, EventHookMode_Pre);
 	HookEvent("player_team",     OnTeamChange, EventHookMode_Pre);
 
-	// Create and exec plugin's config
+	// Create and exec plugin's config (obv. without version ConVar)
 	AutoExecConfig(true, "RoundEvents_Extended");
 
-	// Why revient a wheel?
 	LoadTranslations("basevotes.phrases");
 	LoadTranslations("common.phrases");
 
-	// Fuck the limits
-	SetConVarBounds(dod_bonusroundtime, ConVarBound_Lower, true, BONUSROUNDMIN);
+	// Let's unlock value limits for time after round win until round restarts
 	SetConVarBounds(dod_bonusroundtime, ConVarBound_Upper, true, BONUSROUNDMAX);
 }
 
@@ -126,6 +129,12 @@ public OnConfigsExecuted()
 	// Reset everything
 	RoundsPlayed = false;
 	ShouldSwitch = false;
+
+	// Reset amount of wins for all existing teams
+	for (new i = 0; i < MAXTEAMS; i++)
+	{
+		RoundsWon[i] = false;
+	}
 }
 
 /* OnConVarChange()
@@ -149,6 +158,12 @@ public OnConVarChange(Handle:conVar, const String:oldValue[], const String:newVa
  * ------------------------------------------------------------------------------------- */
 public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
+	// Get the round winner
+	new WinnerTeam = GetEventInt(event, "team");
+
+	// Add +1 win count to a winner team
+	RoundsWon[WinnerTeam]++;
+
 	// Add amount of total rounds played
 	RoundsPlayed++;
 
@@ -163,23 +178,24 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 		SetConVarBool(sv_alltalk,  true);
 	}
 
-	// Fuck restrictions?
 	if (GetConVar[UnlockWall][Value])
 	{
 		// Loop through and accept new collision group on wall entities of this map
 		for (new i = 0; i < sizeof(wallEnts); i++)
 		{
+			// A fix for infinite loops
 			new entity = -1;
 
 			while ((entity = FindEntityByClassname(entity, wallEnts[i])) != -1)
 			{
-				SetEntProp(entity, Prop_Send, "m_CollisionGroup", true);
+				SetEntProp(entity, Prop_Send, "m_CollisionGroup", UNLOCKTEAMWALL);
 			}
 		}
 	}
 
 	// Make sure that we played enough amount of rounds
-	if (GetConVar[SwitchTeamsAfter][Value] == RoundsPlayed)
+	if (GetConVar[SwitchTeamsAfter][Value] == RoundsPlayed
+	||  GetConVar[SwitchAfterWins][Value]  == RoundsWon[WinnerTeam]) // Or any team got X amount of wins
 	{
 		// Call a vote if percent is defined
 		if (GetConVar[CallVoteForSwitch][Value])
@@ -187,7 +203,7 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 			// Create vote handler
 			SwitchVoteMenu = CreateMenu(SwitchTeamsVoteHandler, MenuAction:MENU_ACTIONS_ALL);
 
-			SetMenuTitle(SwitchVoteMenu, "Switch teams after end of the round?");
+			SetMenuTitle(SwitchVoteMenu, "Switch teams after end of the round ?");
 			AddMenuItem(SwitchVoteMenu, VOTE_YES, "Yes");
 			AddMenuItem(SwitchVoteMenu, VOTE_NO,  "No");
 
@@ -199,7 +215,17 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 		}
 
 		// Reset amount of played rounds when teams should be switched
-		RoundsPlayed = false;
+		if (GetConVar[SwitchTeamsAfter][Value] == RoundsPlayed) RoundsPlayed = false;
+
+		// And reset amount of rounds won & rounds played in proper way at all
+		if (GetConVar[SwitchAfterWins][Value] == RoundsWon[WinnerTeam])
+		{
+			for (new i = 0; i < MAXTEAMS; i++)
+			{
+				RoundsWon[i] = false;
+			}
+		}
+
 		ShouldSwitch = true;
 	}
 }
@@ -208,20 +234,19 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
  *
  * Called when a round starts.
  * ------------------------------------------------------------------------------------- */
-public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
+public Action:OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 {
 	// Enable spectators back
 	if (GetConVar[BlockSpectators][Value]) SetConVarBool(mp_allowspectators, true);
 
-	// Let's disable alltalk
 	if (GetConVar[ToggleAlltalk][Value])
 	{
-		// Return notify flag
+		// Disable alltalk and get notify flag back
 		SetConVarBool(sv_alltalk,  false);
 		SetConVarFlags(sv_alltalk, GetConVarFlags(sv_alltalk) | FCVAR_NOTIFY);
 	}
 
-	// Make sure that previous teamwall state should be returned to an original one
+	// Make sure that previous teamwall state should be returned to an original
 	if (GetConVar[UnlockWall][Value])
 	{
 		for (new i = 0; i < sizeof(wallEnts); i++)
@@ -232,16 +257,15 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 			// Since there may be more than 2 walls, lets loop again
 			while ((entity = FindEntityByClassname(entity, wallEnts[i])) != -1)
 			{
-				// And set to original collision group though
-				SetEntProp(entity, Prop_Send, "m_CollisionGroup", false);
+				// Return collision group for wall entities to default (at most maps is 21)
+				SetEntProp(entity, Prop_Send, "m_CollisionGroup", LOCKTEAMWALL);
 			}
 		}
 	}
 
-	// Are teams should be switched?
+	// Aren't teams should be switched?
 	if (ShouldSwitch == true)
 	{
-		// Switch function copied from <eVa> Dog code
 		for (new client = 1; client <= MaxClients; client++)
 		{
 			// Make sure all players is in game
@@ -259,7 +283,7 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 				}
 				else if (GetClientTeam(client) == DODTeam_Axis) // Nope.avi
 				{
-					// Needed to spectate players to switching teams without deaths (DoDS issue: you dont die when you join spectators)
+					// Needed to spectate players to switching teams without deaths (DoD:S bug: you dont die when you join spectators)
 					ChangeClientTeam(client, DODTeam_Spectator);
 					ChangeClientTeam(client, DODTeam_Allies);
 					ShowVGUIPanel(client, "class_us", INVALID_HANDLE, false);
@@ -267,8 +291,12 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 			}
 		}
 
-		// We no longer should be switched!
+		// We no longer should be switched
 		ShouldSwitch = false;
+
+		// Set teams score appropriately
+		SetTeamScore(DODTeam_Allies, GetTeamScore(DODTeam_Axis));
+		SetTeamScore(DODTeam_Axis, GetTeamScore(DODTeam_Allies));
 	}
 }
 
@@ -276,9 +304,9 @@ public OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast)
  *
  * Called when a player changes team.
  * ------------------------------------------------------------------------------------- */
-public OnTeamChange(Handle:event, const String:name[], bool:dontBroadcast)
+public Action:OnTeamChange(Handle:event, const String:name[], bool:dontBroadcast)
 {
-	// Lets suppress '*Player joined Wermacht/U.S' message
+	// This function suppress '*Player joined Wermacht/U.S' message
 	if (ShouldSwitch) SetEventBroadcast(event, true);
 }
 
@@ -293,12 +321,13 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 	{
 		case MenuAction_DisplayItem: // Item text is being drawn to the display
 		{
-			// Get menu item name and translate it
-			decl String:display[8]; GetMenuItem(menu, param, "", 0, _, display, sizeof(display));
-			if (StrEqual(display, "Yes") || StrEqual(display, "No"))
+			decl String:display[16]; GetMenuItem(menu, param, "", 0, _, display, sizeof(display));
+
+			if (StrEqual(display, "VOTE_YES", false) || StrEqual(display, "VOTE_NO", false))
 			{
-				FormatEx(display, sizeof(display), "%T", display, client);
-				return RedrawMenuItem(display);
+				decl String:translate[8];
+				Format(translate, sizeof(translate), "%T", display);
+				return RedrawMenuItem(translate);
 			}
 		}
 		case MenuAction_End: // A menu display has fully ended
@@ -306,21 +335,22 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			CloseHandle(SwitchVoteMenu);
 			SwitchVoteMenu = INVALID_HANDLE;
 		}
-		case MenuAction_VoteCancel: // A vote sequence has been cancelled
+		case MenuAction_VoteCancel, VoteCancel_NoVotes: // A vote sequence has been cancelled, or no votes were received
 		{
-			if (client == VoteCancel_NoVotes) PrintToChatAll("\x04[TeamSwitch]\x05 %t", "No Votes Cast");
+			ShouldSwitch = false;
+			PrintToChatAll("\x04[TeamSwitch]\x05 %t", "No Votes Cast");
 		}
-		case MenuAction_VoteEnd: // A vote sequence has succeeded
+		case MenuAction_VoteEnd: // A vote sequence has succeeded!
 		{
-			decl String:item[8], String:display[8], Float:percent, Float:limit, votes, totalVotes;
+			decl String:item[32], Float:percent, Float:limit, votes, totalVotes;
 
 			// Retrieve voting information
 			GetMenuVoteInfo(param, votes, totalVotes);
-			GetMenuItem(menu, client, item, sizeof(item), _, display, sizeof(display));
+			GetMenuItem(menu, client, item, sizeof(item));
 
 			if (StrEqual(item, VOTE_NO) && client == 1)
 			{
-				// Reverse the votes to be in relation to the Yes option.
+				// Reverse the votes to be in relation to the Yes option
 				votes = totalVotes - votes;
 			}
 
@@ -328,7 +358,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			percent = FloatDiv(float(votes), float(totalVotes));
 			limit   = GetConVar[CallVoteForSwitch][Value];
 
-			// Make sure that its a Yes/No vote
+			// Because that was a Yes/No vote and nothing else
 			if ((StrEqual(item, VOTE_YES) && FloatCompare(percent, limit) < 0 && client == 0)
 			||  (StrEqual(item, VOTE_NO)  && client == 1))
 			{
@@ -338,7 +368,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			else PrintToChatAll("\x04[TeamSwitch]\x05 %t", "Vote Successful", RoundToNearest(100.0 * percent), totalVotes);
 		}
 	}
-	return false; // Because handler should return a value
+	return VOTEINFO_CLIENT_INDEX; // Because menu handler should return a value
 }
 
 /* AddConVar()
