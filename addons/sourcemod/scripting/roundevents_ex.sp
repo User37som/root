@@ -284,7 +284,7 @@ public Action:OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast
 				}
 				else if (GetClientTeam(client) == DODTeam_Axis) // Nope.avi
 				{
-					// Needed to spectate players to switching teams without deaths (DoD:S bug: you dont die when you join spectators)
+					// Needed to spectate players to switching teams without deaths (DoD:S bug - you dont die when you join spectators)
 					ChangeClientTeam(client, DODTeam_Spectator);
 					ChangeClientTeam(client, DODTeam_Allies);
 					ShowVGUIPanel(client, "class_us", INVALID_HANDLE, false);
@@ -322,7 +322,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 	{
 		case MenuAction_DisplayItem: // Item text is being drawn to the display
 		{
-			decl String:display[8]; GetMenuItem(menu, param, "", 0, _, display, sizeof(display));
+			decl String:display[8]; GetMenuItem(menu, param, "", 0, _, display, sizeof(display)); // Name of param
 
 			if (StrEqual(display, "Yes", false) || StrEqual(display, "No", false))
 			{
@@ -358,7 +358,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			percent = FloatDiv(float(votes), float(totalVotes));
 			limit   = GetConVar[CallVoteForSwitch][Value];
 
-			// Make sure that its a Yes/No vote
+			// Make sure that its a Yes / No vote
 			if ((StrEqual(item, VOTE_YES, false) && FloatCompare(percent, limit) < 0 && client == 0)
 			||  (StrEqual(item, VOTE_NO,  false) && client == 1))
 			{
@@ -368,7 +368,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			else PrintToChatAll("\x04[TeamSwitch]\x05 %t", "Vote Successful", RoundToNearest(FloatMul(100.0, percent)), totalVotes);
 		}
 	}
-	return 0; // Because handler should return a value
+	return 0; // Because menu handler should return a value
 }
 
 /* AddConVar()
