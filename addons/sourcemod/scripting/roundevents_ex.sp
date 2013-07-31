@@ -21,6 +21,9 @@
 #define LOCKTEAMWALL   21
 #define BONUSROUNDMAX  60.0
 
+#define VOTE_YES       "###yes###"
+#define VOTE_NO        "###no###"
+
 // ====[ VARIABLES ]====================================================================
 static const String:wallEnts[][] = { "func_team_wall", "func_teamblocker" };
 
@@ -90,13 +93,13 @@ public OnPluginStart()
 	// Create console variables
 	CreateConVar("dod_roundend_ex_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
 
-	AddConVar(UnlockWall,          ValueType_Bool,  CreateConVar("dod_rex_unlockteamwall",      "1",    "Whether or not unlock team wall after round end\nNote: It will be returned to the original state when new round starts",    FCVAR_PLUGIN, true, 0.0, true, 1.0));
+	AddConVar(UnlockWall,          ValueType_Bool,  CreateConVar("dod_rex_unlockteamwall",      "1",    "Whether or not unlock team wall after round end\nWall will be returned to the original state when new round starts",        FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(BlockSpectators,     ValueType_Bool,  CreateConVar("dod_rex_blockspectators",     "1",    "Whether or not disable availability to leave to spectators after round end\nUseful to prevent losers to avoid humiliation", FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(ToggleAlltalk,       ValueType_Bool,  CreateConVar("dod_rex_togglealltalk",       "0",    "Whether or not disable restrictions for voice chat (enable sv_alltalk) on round end and turn it off when new round starts", FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(SwitchTeamsAfter,    ValueType_Int,   CreateConVar("dod_rex_switchafterrounds",   "4",    "Sets the amount ot rounds that required to call a vote or switch teams on next round\nSet to 0 to disable those features",  FCVAR_PLUGIN, true, 0.0));
 	AddConVar(SwitchAfterWins,     ValueType_Int,   CreateConVar("dod_rex_switchafterwins",     "0",    "Unlike dod_rex_switchafterrounds ConVar, this one deremines amount of wins needed to call a vote or switch teams",          FCVAR_PLUGIN, true, 0.0));
-	AddConVar(SwitchTeamsImmunity, ValueType_Bool,  CreateConVar("dod_rex_switchimmunity",      "0",    "Whether or not protect admins from being switched to opposite team on round start",                                         FCVAR_PLUGIN, true, 0.0, true, 1.0));
-	AddConVar(CallVoteForSwitch,   ValueType_Float, CreateConVar("dod_rex_callvotebeforswitch", "0.60", "If value is specified (in percent), call a switch vote\nValue determines number of votes for successful voting",            FCVAR_PLUGIN, true, 0.0, true, 1.0));
+	AddConVar(SwitchTeamsImmunity, ValueType_Bool,  CreateConVar("dod_rex_switchimmunity",      "0",    "Whether or not protect admins from being switched to opposite team after successfull voting when new round starts",         FCVAR_PLUGIN, true, 0.0, true, 1.0));
+	AddConVar(CallVoteForSwitch,   ValueType_Float, CreateConVar("dod_rex_callvotebeforswitch", "0.60", "If value is specified, always call a switch vote\nValue (1 means 100%) determines number of votes for successful voting",   FCVAR_PLUGIN, true, 0.0, true, 1.0));
 
 	// Get default ConVars
 	mp_allowspectators = FindConVar("mp_allowspectators");
@@ -202,8 +205,8 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 			SwitchVoteMenu = CreateMenu(SwitchTeamsVoteHandler, MenuAction:MENU_ACTIONS_ALL);
 
 			SetMenuTitle(SwitchVoteMenu, "Switch teams after end of the round ?");
-			AddMenuItem(SwitchVoteMenu, "VOTE_YES", "Yes");
-			AddMenuItem(SwitchVoteMenu, "VOTE_NO",  "No");
+			AddMenuItem(SwitchVoteMenu, VOTE_YES, "Yes");
+			AddMenuItem(SwitchVoteMenu, VOTE_NO,  "No");
 
 			// Dont allow client to close vote menu
 			SetMenuExitButton(SwitchVoteMenu, false);
@@ -319,15 +322,12 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 	{
 		case MenuAction_DisplayItem: // Item text is being drawn to the display
 		{
-			decl String:display[16];
-			GetMenuItem(menu, param, display, sizeof(display));
+			decl String:display[8]; GetMenuItem(menu, param, "", 0, _, display, sizeof(display));
 
-			if (StrEqual(display, "VOTE_YES", false)
-			||  StrEqual(display, "VOTE_NO",  false))
+			if (StrEqual(display, "Yes", false) || StrEqual(display, "No", false))
 			{
-				decl String:translate[8];
-				Format(translate, sizeof(translate), "%T", display);
-				return RedrawMenuItem(translate);
+				Format(display, sizeof(display), "%T", display, client);
+				return RedrawMenuItem(display);
 			}
 		}
 		case MenuAction_End: // A menu display has fully ended
@@ -335,12 +335,12 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			CloseHandle(SwitchVoteMenu);
 			SwitchVoteMenu = INVALID_HANDLE;
 		}
-		case MenuAction_VoteCancel, VoteCancel_NoVotes: // A vote sequence has been cancelled, or no votes were received
+		case MenuAction_VoteCancel, VoteCancel_NoVotes: // A vote sequence has been cancelled
 		{
 			ShouldSwitch = false;
 			PrintToChatAll("\x04[TeamSwitch]\x05 %t", "No Votes Cast");
 		}
-		case MenuAction_VoteEnd: // A vote sequence has succeeded!
+		case MenuAction_VoteEnd: // A vote sequence has succeeded
 		{
 			decl String:item[32], Float:percent, Float:limit, votes, totalVotes;
 
@@ -348,7 +348,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			GetMenuVoteInfo(param, votes, totalVotes);
 			GetMenuItem(menu, client, item, sizeof(item));
 
-			if (StrEqual(item, "VOTE_NO", false) && client == 1)
+			if (StrEqual(item, VOTE_NO, false) && client == 1)
 			{
 				// Reverse the votes to be in relation to the Yes option
 				votes = totalVotes - votes;
@@ -358,9 +358,9 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			percent = FloatDiv(float(votes), float(totalVotes));
 			limit   = GetConVar[CallVoteForSwitch][Value];
 
-			// Because that was a Yes/No vote and nothing else
-			if ((StrEqual(item, "VOTE_YES", false) && FloatCompare(percent, limit) < 0 && client == 0)
-			||  (StrEqual(item, "VOTE_NO",  false) && client == 1))
+			// Make sure that its a Yes/No vote
+			if ((StrEqual(item, VOTE_YES, false) && FloatCompare(percent, limit) < 0 && client == 0)
+			||  (StrEqual(item, VOTE_NO,  false) && client == 1))
 			{
 				PrintToChatAll("\x04[TeamSwitch]\x05 %t", "Vote Failed", RoundToNearest(FloatMul(100.0, limit)), RoundToNearest(FloatMul(100.0, percent)), totalVotes);
 				ShouldSwitch = false;
@@ -368,7 +368,7 @@ public SwitchTeamsVoteHandler(Handle:menu, MenuAction:action, client, param)
 			else PrintToChatAll("\x04[TeamSwitch]\x05 %t", "Vote Successful", RoundToNearest(FloatMul(100.0, percent)), totalVotes);
 		}
 	}
-	return 0; // Because menu handler should return a value
+	return 0; // Because handler should return a value
 }
 
 /* AddConVar()
