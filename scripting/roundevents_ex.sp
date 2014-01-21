@@ -8,8 +8,6 @@
 * Changelog & more info at http://goo.gl/4nKhJ
 */
 
-#pragma semicolon 1
-
 // ====[ SDKTOOLS ]=====================================================================
 #include <sdktools_functions>
 
@@ -93,6 +91,7 @@ public OnPluginStart()
 	// Create console variables
 	CreateConVar("dod_roundend_ex_version", PLUGIN_VERSION, PLUGIN_NAME, FCVAR_NOTIFY|FCVAR_DONTRECORD);
 
+	// New
 	AddConVar(UnlockWall,          ValueType_Bool,  CreateConVar("dod_rex_unlockteamwall",      "1",    "Whether or not unlock team wall after round end\nWall will be returned to the original state when new round starts",        FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(BlockSpectators,     ValueType_Bool,  CreateConVar("dod_rex_blockspectators",     "1",    "Whether or not disable availability to leave to spectators after round end\nUseful to prevent losers to avoid humiliation", FCVAR_PLUGIN, true, 0.0, true, 1.0));
 	AddConVar(ToggleAlltalk,       ValueType_Bool,  CreateConVar("dod_rex_togglealltalk",       "0",    "Whether or not disable restrictions for voice chat (enable sv_alltalk) on round end and turn it off when new round starts", FCVAR_PLUGIN, true, 0.0, true, 1.0));
@@ -114,6 +113,7 @@ public OnPluginStart()
 	// Create and exec plugin's config (without version ConVar)
 	AutoExecConfig(true, "RoundEvents_Extended");
 
+	// Load plugin's translations
 	LoadTranslations("basevotes.phrases");
 	LoadTranslations("common.phrases");
 
@@ -132,7 +132,7 @@ public OnConfigsExecuted()
 	ShouldSwitch = false;
 
 	// Reset amount of wins for all existing teams
-	for (new i = 0; i < MAX_TEAMS; i++)
+	for (new i; i < MAX_TEAMS; i++)
 	{
 		RoundsWon[i] = false;
 	}
@@ -144,7 +144,7 @@ public OnConfigsExecuted()
  * ------------------------------------------------------------------------------------- */
 public OnConVarChange(Handle:conVar, const String:oldValue[], const String:newValue[])
 {
-	for (new i = 0; i < ConVar_Size; i++)
+	for (new i; i < ConVar_Size; i++)
 	{
 		if (conVar == GetConVar[i][ConVarHandle])
 		{
@@ -162,7 +162,7 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 	// Get the round winner
 	new WinnerTeam = GetEventInt(event, "team");
 
-	// Add +1 win count to a winner team
+	// Add +1 win count to a winner's team
 	RoundsWon[WinnerTeam]++;
 
 	// Add amount of total rounds played
@@ -182,7 +182,7 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 	if (GetConVar[UnlockWall][Value])
 	{
 		// Loop through and accept new collision group on wall entities of this map
-		for (new i = 0; i < sizeof(wallEnts); i++)
+		for (new i; i < sizeof(wallEnts); i++)
 		{
 			// A fix for infinite loops
 			new entity = -1;
@@ -221,7 +221,7 @@ public OnRoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 		// And reset amount of rounds won & rounds played in proper way at all
 		if (GetConVar[SwitchAfterWins][Value] == RoundsWon[WinnerTeam])
 		{
-			for (new i = 0; i < MAX_TEAMS; i++)
+			for (new i; i < MAX_TEAMS; i++)
 			{
 				RoundsWon[i] = false;
 			}
@@ -250,7 +250,7 @@ public Action:OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast
 	// Make sure that previous teamwall state should be returned to an original
 	if (GetConVar[UnlockWall][Value])
 	{
-		for (new i = 0; i < sizeof(wallEnts); i++)
+		for (new i; i < sizeof(wallEnts); i++)
 		{
 			// Let's get it started
 			new entity = -1;
