@@ -79,7 +79,7 @@ public Plugin:myinfo =
 	description = "Provides extended functionality for round events",
 	version     = PLUGIN_VERSION,
 	url         = "http://www.dodsplugins.com/"
-};
+}
 
 
 /* OnPluginStart()
@@ -275,7 +275,7 @@ public Action:OnRoundStart(Handle:event, const String:name[], bool:dontBroadcast
 				// Ignore admins from being switched if immunity is enabled
 				if (GetConVar[SwitchTeamsImmunity][Value] && GetUserAdmin(client) != INVALID_ADMIN_ID) continue;
 
-				if (GetClientTeam(client) == DODTeam_Allies) // is player on allies?
+				if (GetClientTeam(client) == DODTeam_Allies) // is player on allies ?
 				{
 					// Yep, get the other team
 					ChangeClientTeam(client, DODTeam_Spectator);
